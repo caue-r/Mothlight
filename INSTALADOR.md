@@ -1,5 +1,39 @@
 # Instalador automático do YaniNeko
 
+## Instalar a versão local do Desktop
+
+Use Python 3.10 ou superior. Na pasta deste projeto, execute:
+
+```powershell
+py instalar_local.py
+```
+
+O script usa os fontes e o `proton-confgen.exe` ao lado dele, incluindo alterações
+ainda não enviadas ao GitHub. Reutiliza o Vencord em
+`%LOCALAPPDATA%\LefferzinBypass\Vencord`, sem atualizar ou resetar esse repositório.
+Faz backup do plugin e do `dist`, compila, valida o resultado e só então fecha o
+Discord Stable e executa o instalador oficial. Abra o Discord após a conclusão.
+Uma falha no build restaura o plugin e o `dist` anteriores.
+
+```powershell
+py instalar_local.py --check          # Apenas validar os arquivos e mostrar caminhos
+py instalar_local.py --build-only     # Compilar sem fechar/injetar no Discord
+py instalar_local.py --install-deps   # Reinstalar dependências com o pnpm declarado
+py instalar_local.py --vencord-dir "C:\caminho\Vencord"
+```
+
+É necessário Node.js 22+ no PATH. Git é necessário apenas se não houver Vencord
+local. Corepack é necessário caso as dependências precisem ser instaladas.
+O script pode acessar a internet para clonar o Vencord ausente, preparar
+dependências ou baixar o instalador oficial ausente; o plugin sempre vem da pasta local.
+Logs e backups ficam em `%LOCALAPPDATA%\LefferzinBypass\logs` e `backups`.
+O instalador aguarda Enter ao terminar; use `--no-pause` para execução automatizada.
+
+O modo `--build-only` atualiza o `dist` da cópia escolhida. Caso ela já seja usada
+pelo Discord, o próximo início do aplicativo poderá carregar esse novo build.
+
+## Instalador que baixa a versão publicada
+
 O arquivo `0-INSTALAR-VENCORD.bat` é o ponto de entrada recomendado no **Windows 10/11 x64**. Ele executa o instalador PowerShell local; se o arquivo não estiver presente, baixa uma cópia atualizada da branch `main`.
 
 ## O que ele faz

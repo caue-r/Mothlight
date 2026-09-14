@@ -198,11 +198,47 @@ export function inspectWireSock(configPath?: string): WireSockInspection {
         reason: null,
     };
     const registeredServices = VPN_SERVICE_NAMES.filter(serviceExists);
+    const commands = new Map(registeredServices.map(name => [name, serviceCommand(name)]));
+    return classifyWireSock(configPath, registeredServices, VPN_SERVICE_NAMES.filter(serviceRunning), runningWireSockProcesses(), name => commands.get(name as typeof VPN_SERVICE_NAMES[number]) ?? null);
+}
+
+// Compartilha apenas a consulta em andamento: ações de controle nunca usam cache.
+let pendingInspection: Promise<WireSockSnapshot> | null = null;
+interface WireSockSnapshot {
+    services: Array<{ Name: string; State: string; PathName: string | null }>;
+    processes: Array<{ ProcessId: number; CommandLine: string | null }>;
+}
+
+export async function inspectWireSockAsync(configPath?: string): Promise<WireSockInspection> {
+    if (!isWindows()) return inspectWireSock(configPath);
+    if (!pendingInspection) {
+        const script = `$ErrorActionPreference='Stop'; $services=@(Get-CimInstance Win32_Service -Filter "Name='wiresock-client-service' OR Name='wiresock-pro-client-service'" | Select-Object Name,State,PathName); $processes=@(Get-CimInstance Win32_Process -Filter "Name='wiresock-client.exe'" | Select-Object ProcessId,CommandLine); @{services=$services;processes=$processes} | ConvertTo-Json -Depth 4 -Compress`;
+        pendingInspection = new Promise<WireSockSnapshot>((resolve, reject) => {
+            execFile("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], {
+                encoding: "utf8", windowsHide: true, timeout: 10_000, maxBuffer: 1024 * 1024,
+            }, (error, stdout) => {
+                if (error) return reject(error);
+                try {
+                    const snapshot = JSON.parse(stdout) as WireSockSnapshot;
+                    if (!Array.isArray(snapshot.services) || !Array.isArray(snapshot.processes))
+                        throw new Error("Resposta inválida ao consultar WireSock.");
+                    resolve(snapshot);
+                } catch (parseError) { reject(parseError); }
+            });
+        }).finally(() => { pendingInspection = null; });
+    }
+    const snapshot = await pendingInspection;
+    return classifyWireSock(configPath, snapshot.services.map(row => row.Name),
+        snapshot.services.filter(row => row.State === "Running").map(row => row.Name),
+        snapshot.processes.map(row => ({ pid: row.ProcessId, commandLine: row.CommandLine })),
+        name => snapshot.services.find(row => row.Name === name)?.PathName ?? null);
+}
+
+function classifyWireSock(configPath: string | undefined, registeredServices: string[], services: string[],
+    processes: Array<{ pid: number; commandLine: string | null }>, serviceCommand: (name: string) => string | null): WireSockInspection {
     const foreignRegisteredServices = configPath
         ? registeredServices.filter(name => !containsConfig(serviceCommand(name), configPath))
         : registeredServices;
-    const services = VPN_SERVICE_NAMES.filter(serviceRunning);
-    const processes = runningWireSockProcesses();
     const processIds = processes.map(process => process.pid);
     const active = services.length > 0 || processes.length > 0;
     if (!active) return {

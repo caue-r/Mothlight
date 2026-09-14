@@ -17,3 +17,4 @@ route-snapshot.json
 .env.local
 *.asar
 *.unpacked/
+__pycache__/

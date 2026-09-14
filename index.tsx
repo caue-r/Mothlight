@@ -82,6 +82,9 @@ let lastStreamObservation: {
 } | null = null;
 let lastSelectedStreamRegion: string | null = null;
 let presenceStatusTimer: ReturnType<typeof setInterval> | null = null;
+let presenceStatusBusy = false;
+let pluginRunning = false;
+let pluginGeneration = 0;
 let routeCheckTimer: ReturnType<typeof setInterval> | null = null;
 let initialRouteCheckTimer: ReturnType<typeof setTimeout> | null = null;
 let lastVpnNotification: { state: string; active: boolean; routeId: string | null } | null = null;
@@ -139,9 +142,12 @@ function stopAutomaticRouteMonitor(): void {
 }
 
 async function refreshPresenceStatus(): Promise<void> {
-    if (!Native) return;
+    if (!Native || !pluginRunning || presenceStatusBusy) return;
+    presenceStatusBusy = true;
+    const generation = pluginGeneration;
     try {
         const status = await Native.getVpnStatus() as PluginVpnStatus;
+        if (!pluginRunning || generation !== pluginGeneration) return;
         notifyVpnStatus(status);
         if (status.active === true) {
             startPresence(status.routeId, status.routeCountry, status.routeCity, status.pingMs);
@@ -151,6 +157,8 @@ async function refreshPresenceStatus(): Promise<void> {
         }
     } catch (error) {
         logger.error("Falha ao atualizar o status global do Presence", error);
+    } finally {
+        presenceStatusBusy = false;
     }
 }
 
@@ -329,8 +337,14 @@ function VpnPanel() {
     };
 
     useEffect(() => {
-        void refresh();
-        const timer = setInterval(() => void refresh(), 5_000);
+        let pending = false;
+        const poll = async () => {
+            if (pending) return;
+            pending = true;
+            try { await refresh(); } finally { pending = false; }
+        };
+        void poll();
+        const timer = setInterval(() => void poll(), 5_000);
         return () => clearInterval(timer);
     }, []);
 
@@ -1030,11 +1044,13 @@ export default definePlugin({
     },
 
     start() {
+        pluginRunning = true;
+        pluginGeneration++;
         forceRegion();
         startStreamClaimWatch();
         if (!Native) return;
         void refreshPresenceStatus();
-        presenceStatusTimer = setInterval(() => void refreshPresenceStatus(), 5_000);
+        presenceStatusTimer = setInterval(() => void refreshPresenceStatus(), 15_000);
             Native.getProtonSettings().then(settings => {
             const hasUsername = typeof settings?.protonUsername === "string" && settings.protonUsername.trim() !== "";
             const hasSession = typeof (settings as { sessionUsername?: unknown })?.sessionUsername === "string"
@@ -1057,6 +1073,8 @@ export default definePlugin({
     },
 
     stop() {
+        pluginRunning = false;
+        pluginGeneration++;
         if (presenceStatusTimer) {
             clearInterval(presenceStatusTimer);
             presenceStatusTimer = null;

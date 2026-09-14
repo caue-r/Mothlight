@@ -412,8 +412,8 @@ export function restoreNetwork(_: IpcMainInvokeEvent) {
     return controller.restoreNetwork();
 }
 
-export function getVpnStatus(_: IpcMainInvokeEvent) {
-    const base = controller.getStatus();
+export async function getVpnStatus(_: IpcMainInvokeEvent) {
+    const base = await controller.getStatus();
     const routeInfo = readRouteInfo();
     let routeId: string | null = routeInfo.routeId;
     let pingMs: number | null = routeInfo.pingMs;

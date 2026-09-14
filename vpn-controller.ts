@@ -50,6 +50,7 @@ const MIGRATION_FILE = "migration-v1.json";
 const PROFILE_FILE = "wireguard.conf";
 const SERVICE_CONFIG_FILE = "wiresock-discord.conf";
 const WATCHDOG_MS = 15_000;
+const DIAGNOSTICS_MS = 5 * 60_000;
 const AUTO_ROUTE_LOAD_LIMIT = 70;
 const AUTO_ROUTE_PING_CANDIDATES = 20;
 
@@ -89,6 +90,9 @@ export class PluginVpnController {
     private externalReason: string | null = null;
     private operationQueue: Promise<unknown> = Promise.resolve();
     private watchdog: ReturnType<typeof setInterval> | null = null;
+    private watchdogBusy = false;
+    private diagnosticsBusy = false;
+    private lastDiagnosticsAt = 0;
     private restarting = false;
     private initialized = false;
     private optimization: { id: string; controller: AbortController } | null = null;
@@ -186,7 +190,7 @@ export class PluginVpnController {
         }
     }
 
-    public getStatus(): VpnStatus {
+    public async getStatus(): Promise<VpnStatus> {
         if (!isSupportedWindowsArchitecture(process.platform, process.arch)) {
             return {
                 state: "blocked_external",
@@ -208,7 +212,10 @@ export class PluginVpnController {
                 pingMs: null,
             };
         }
-        const inspection = windows.inspectWireSock(this.serviceConfigPath);
+        const generation = this.generation;
+        const previousState = this.state;
+        const inspection = await windows.inspectWireSockAsync(this.serviceConfigPath);
+        if (generation !== this.generation || previousState !== this.state) return this.getStatus();
         if (this.state === "active" && (!inspection.active || !inspection.owned)) {
             this.state = inspection.active || inspection.foreignRegisteredServices.length > 0 ? "blocked_external" : "recovery_required";
             this.externalReason = inspection.reason;
@@ -457,7 +464,7 @@ export class PluginVpnController {
             if (!username) return { success: false, error: "Faça login com sua conta Proton antes de otimizar a rota." };
             if (this.optimization) return { success: false, error: "Já existe uma otimização Proton em andamento." };
 
-            const wasActive = this.getStatus().active;
+            const wasActive = (await this.getStatus()).active;
             if (this.state === "blocked_external") return { success: false, error: this.externalReason || "WireSock externo está ativo." };
             if (wasActive) {
                 const stopped = await this.stopInternal(false);
@@ -543,7 +550,7 @@ export class PluginVpnController {
 
     public autoOptimizeRoute(): Promise<proton.ProtonOptimizationResult & { checked?: boolean; changed?: boolean; currentLoad?: number; selectedServer?: string; pingCandidates?: number }> {
         return (async () => {
-            const status = this.getStatus();
+            const status = await this.getStatus();
             if (!status.active) return { success: false, checked: false, changed: false, error: "VPN inativa." };
             const settings = this.settings();
             const currentId = this.routeId?.toLowerCase() || this.readEndpointFromProfile()?.hostname.toLowerCase();
@@ -935,57 +942,70 @@ export class PluginVpnController {
     }
 
     private startDiagnostics(stage: string): void {
-        void windows.diagnoseWindowsNetwork(this.options.log).then(result => {
+        if (this.diagnosticsBusy || (stage === "watchdog" && Date.now() - this.lastDiagnosticsAt < DIAGNOSTICS_MS)) return;
+        this.diagnosticsBusy = true;
+        this.lastDiagnosticsAt = Date.now();
+        const network = windows.diagnoseWindowsNetwork(this.options.log).then(result => {
             this.setDiagnostic("network", result.ok, `${stage}: ${result.detail}`);
         }).catch(error => this.setDiagnostic("network", false, error));
 
         const owner = this.readOwner();
         const probePath = owner?.probePath;
-        if (!probePath || !fs.existsSync(probePath)) return;
-        void windows.runRouteProbe(probePath).then(result => {
+        const route = !probePath || !fs.existsSync(probePath) ? Promise.resolve() : windows.runRouteProbe(probePath).then(result => {
             this.setDiagnostic("route", Boolean(result?.success), safeDiagnosticDetail(JSON.stringify(result || { error: "resposta vazia" }), 500));
             this.options.log(result?.success ? "info" : "warn", "probe de rota do Discord concluído", { stage, result: safeDiagnosticDetail(JSON.stringify(result || {}), 500), mode: "log-only" });
         }).catch(error => {
             this.setDiagnostic("route", false, error);
             this.options.log("warn", "probe de rota do Discord falhou", { stage, erro: errorMessage(error), mode: "log-only" });
         });
+        void Promise.allSettled([network, route]).finally(() => { this.diagnosticsBusy = false; });
     }
 
     private startWatchdog(): void {
         if (this.watchdog || !isWindows()) return;
-        this.watchdog = setInterval(() => {
-            if (this.state !== "active") return;
-            const owner = this.readOwner();
-            if (owner && owner.pid !== process.pid && !processAlive(owner.pid)) {
-                void this.stopInternal(false, false).then(result => {
-                    this.options.log(result.success ? "info" : "warn", "watchdog encerrou a sessão WireSock após a morte do Discord dono", { pid: owner.pid, sucesso: result.success, erro: result.error });
-                }).catch(error => {
-                    this.options.log("error", "watchdog não conseguiu derrubar WireSock do PID morto", { erro: errorMessage(error) });
-                });
-                return;
+        this.watchdog = setInterval(async () => {
+            if (this.state !== "active" || this.watchdogBusy) return;
+            this.watchdogBusy = true;
+            const generation = this.generation;
+            const watchdog = this.watchdog;
+            try {
+                const owner = this.readOwner();
+                if (owner && owner.pid !== process.pid && !processAlive(owner.pid)) {
+                    void this.stopInternal(false, false).then(result => {
+                        this.options.log(result.success ? "info" : "warn", "watchdog encerrou a sessão WireSock após a morte do Discord dono", { pid: owner.pid, sucesso: result.success, erro: result.error });
+                    }).catch(error => {
+                        this.options.log("error", "watchdog não conseguiu derrubar WireSock do PID morto", { erro: errorMessage(error) });
+                    });
+                    return;
+                }
+                if (this.discordPid !== null && this.discordPid !== process.pid && !processAlive(this.discordPid)) {
+                    const discordPid = this.discordPid;
+                    void this.stopInternal(false, false).then(result => {
+                        this.options.log(result.success ? "info" : "warn", "watchdog encerrou a sessão WireSock após a morte do Discord", { pid: discordPid, sucesso: result.success, erro: result.error });
+                    }).catch(error => {
+                        this.options.log("error", "watchdog não conseguiu derrubar WireSock do Discord PID morto", { erro: errorMessage(error) });
+                    });
+                    return;
+                }
+                const inspection = await windows.inspectWireSockAsync(this.serviceConfigPath);
+                if (this.state !== "active" || generation !== this.generation || watchdog !== this.watchdog) return;
+                if (!inspection.active) {
+                    this.state = "recovery_required";
+                    this.setDiagnostic("wireguard", false, "serviço WireSock próprio desapareceu");
+                    this.options.log("error", "watchdog detectou que o WireSock próprio parou", { mode: "diagnostic-only" });
+                    this.stopWatchdog();
+                    return;
+                }
+                if (!inspection.owned) {
+                    this.blockExternal(inspection.reason || "ownership do WireSock mudou");
+                    return;
+                }
+                this.startDiagnostics("watchdog");
+            } catch (error) {
+                this.options.log("warn", "falha na consulta assíncrona do watchdog", { erro: errorMessage(error) });
+            } finally {
+                this.watchdogBusy = false;
             }
-            if (this.discordPid !== null && this.discordPid !== process.pid && !processAlive(this.discordPid)) {
-                const discordPid = this.discordPid;
-                void this.stopInternal(false, false).then(result => {
-                    this.options.log(result.success ? "info" : "warn", "watchdog encerrou a sessão WireSock após a morte do Discord", { pid: discordPid, sucesso: result.success, erro: result.error });
-                }).catch(error => {
-                    this.options.log("error", "watchdog não conseguiu derrubar WireSock do Discord PID morto", { erro: errorMessage(error) });
-                });
-                return;
-            }
-            const inspection = windows.inspectWireSock(this.serviceConfigPath);
-            if (!inspection.active) {
-                this.state = "recovery_required";
-                this.setDiagnostic("wireguard", false, "serviço WireSock próprio desapareceu");
-                this.options.log("error", "watchdog detectou que o WireSock próprio parou", { mode: "diagnostic-only" });
-                this.stopWatchdog();
-                return;
-            }
-            if (!inspection.owned) {
-                this.blockExternal(inspection.reason || "ownership do WireSock mudou");
-                return;
-            }
-            this.startDiagnostics("watchdog");
         }, WATCHDOG_MS);
         this.watchdog.unref?.();
     }

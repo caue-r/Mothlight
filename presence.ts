@@ -119,14 +119,14 @@ export function updateRouteInfo(server: string | null, country: string | null, c
 }
 
 export function startPresence(server?: string | null, country?: string | null, city?: string | null, pingMs?: number | null): void {
+    if (active) {
+        updateRouteInfo(server ?? null, country ?? null, city ?? null, pingMs ?? null);
+        return;
+    }
     currentServer = typeof server === "string" && server.trim() ? server.trim() : null;
     currentCountry = typeof country === "string" && country.trim() ? country.trim() : null;
     currentCity = typeof city === "string" && city.trim() ? city.trim() : null;
     currentPing = typeof pingMs === "number" && isFinite(pingMs) && pingMs >= 0 ? pingMs : null;
-    if (active) {
-        void publishActivity();
-        return;
-    }
     active = true;
     presenceGeneration++;
     discordPresenceStartedAt = Date.now();
