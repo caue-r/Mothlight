@@ -260,14 +260,22 @@ def build(mod_dir: Path, plugin_source: Path):
     pnpm = pnpm_for(mod_dir)
     run([pnpm, "install", "--frozen-lockfile"], cwd=mod_dir)
     run([pnpm, "build"], cwd=mod_dir)
-    renderer = mod_dir / "dist" / "renderer.js"
-    if not renderer.is_file():
-        fail("O build não gerou dist\\renderer.js.")
+    # O Vencord emite dist/renderer.js; o Equicord separa por cliente e emite
+    # dist/desktop/renderer.js. Aceitar os dois layouts.
+    renderer = next((c for c in (
+        mod_dir / "dist" / "desktop" / "renderer.js",
+        mod_dir / "dist" / "renderer.js",
+    ) if c.is_file()), None)
+    if renderer is None:
+        fail("O build nao gerou renderer.js em dist/ nem em dist/desktop/.")
     if "Mothlight" not in renderer.read_text(encoding="utf-8", errors="ignore"):
-        fail("O plugin não apareceu no renderer.js.")
-    dist_bin = mod_dir / "dist" / "desktop" / "bin" / "win32-x64"
-    dist_bin.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(plugin_source / "bin" / "win32-x64" / "proton-confgen.exe", dist_bin)
+        fail("O plugin nao apareceu no renderer.js.")
+    # O runtime resolve o binario a partir de __dirname do bundle carregado.
+    origem = plugin_source / "bin" / "win32-x64" / "proton-confgen.exe"
+    for base in {renderer.parent, mod_dir / "dist" / "desktop"}:
+        destino = base / "bin" / "win32-x64"
+        destino.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(origem, destino)
     log("OK: build validado e binário copiado")
 
 
