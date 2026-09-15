@@ -1,9 +1,14 @@
 #!/usr/bin/env python3
-"""Instalador automático do Mothlight/Vencord para Windows x64.
-Uso: py instalar_yanineko.py
+"""Instalador do Mothlight para Windows x64.
+
+Uso:
+    py instalar_yanineko.py                      instala
+    py instalar_yanineko.py --modo reinstalar    recompila e reinjeta, preservando o login Proton
+    py instalar_yanineko.py --modo desinstalar   remove tudo, inclusive o login Proton
 """
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import re
@@ -294,10 +299,174 @@ def inject(mod_dir: Path):
     log("OK: injeção concluída")
 
 
+# Nomes que o plugin ja usou em settings.json e como raiz de dados.
+PLUGIN_SETTINGS_KEYS = ("Mothlight", "LefferzinBypass", "GoLiveBypass")
+VPN_DATA_DIR_NAME = "GoLiveBypass"
+LEGACY_ROOT_NAMES = ("LefferzinBypass",)
+
+
+def settings_files() -> list[Path]:
+    """settings.json do Vencord e do Equicord, nos dois layouts conhecidos."""
+    found = []
+    for var in ("APPDATA", "LOCALAPPDATA"):
+        base = os.environ.get(var)
+        if not base:
+            continue
+        for mod in ("Vencord", "Equicord"):
+            for rel in ("settings/settings.json", "settings.json"):
+                path = Path(base) / mod / rel
+                if path.is_file() and path not in found:
+                    found.append(path)
+    return found
+
+
+def clean_plugin_settings():
+    """Remove so as chaves do plugin, preservando os demais plugins do usuario."""
+    for path in settings_files():
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            log(f"aviso: nao consegui ler {path}")
+            continue
+        plugins = data.get("plugins")
+        if not isinstance(plugins, dict):
+            continue
+        removed = [key for key in PLUGIN_SETTINGS_KEYS if key in plugins]
+        if not removed:
+            continue
+        for key in removed:
+            del plugins[key]
+        try:
+            path.write_text(json.dumps(data, indent=4, ensure_ascii=False), encoding="utf-8")
+            log(f"chaves removidas em {path}: {', '.join(removed)} ({len(plugins)} plugins preservados)")
+        except Exception as exc:
+            log(f"aviso: nao consegui gravar {path}: {exc}")
+
+
+def unpatch_discord(mod_dir: Path):
+    """Despatcheia pelo injetor oficial; se nao der, restaura o app.asar na mao."""
+    installer = mod_dir / "scripts" / "runInstaller.mjs"
+    if installer.is_file() and shutil.which("node"):
+        result = run(["node", str(installer), "--", "--uninstall", "-branch", "stable"], cwd=mod_dir, check=False)
+        if result.returncode == 0:
+            log("OK: Discord despatcheado pelo injetor oficial")
+            return
+        log("o injetor oficial falhou; restaurando o app.asar manualmente")
+    # O patch atual troca resources/app.asar por um stub e guarda o original
+    # como _app.asar. Desfazer isso nao depende de node nem do clone do mod.
+    restored = 0
+    discord = Path(os.environ.get("LOCALAPPDATA", "")) / "Discord"
+    for app in sorted(discord.glob("app-*")):
+        original = app / "resources" / "_app.asar"
+        stub = app / "resources" / "app.asar"
+        if not original.is_file():
+            continue
+        try:
+            if stub.exists():
+                stub.unlink()
+            original.rename(stub)
+            restored += 1
+        except Exception as exc:
+            log(f"aviso: nao consegui restaurar {stub}: {exc}")
+    log(f"OK: app.asar restaurado em {restored} pasta(s) do Discord" if restored else "Discord ja estava sem patch")
+
+
+def wiresock_uninstall_commands() -> list[str]:
+    """Le no registro como desinstalar o WireSock em modo silencioso."""
+    import winreg
+
+    commands: list[str] = []
+    bases = (
+        r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
+        r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall",
+    )
+    for base in bases:
+        try:
+            root_key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, base)
+        except OSError:
+            continue
+        with root_key:
+            for index in range(winreg.QueryInfoKey(root_key)[0]):
+                try:
+                    with winreg.OpenKey(root_key, winreg.EnumKey(root_key, index)) as entry:
+                        display = str(winreg.QueryValueEx(entry, "DisplayName")[0])
+                        if "wiresock" not in display.lower():
+                            continue
+                        try:
+                            quiet = str(winreg.QueryValueEx(entry, "QuietUninstallString")[0]).strip()
+                        except OSError:
+                            quiet = ""
+                        raw = quiet or str(winreg.QueryValueEx(entry, "UninstallString")[0])
+                except OSError:
+                    continue
+                text = " ".join(raw.split())
+                if quiet:
+                    commands.append(text)
+                    continue
+                product = re.search(r"\{[0-9A-Fa-f-]{36}\}", text)
+                if text.lower().startswith("msiexec") and product:
+                    commands.append(f"msiexec.exe /x {product.group(0)} /quiet /norestart")
+                else:
+                    commands.append(f"{text} /quiet /norestart")
+    # O desinstalador do bundle (.exe) remove tudo; deixe-o na frente do msiexec.
+    commands.sort(key=lambda value: value.lower().startswith("msiexec"))
+    seen: list[str] = []
+    for command in commands:
+        if command not in seen:
+            seen.append(command)
+    return seen
+
+
+def remove_wiresock():
+    step("Removendo o WireSock")
+    for name in ("wiresock-client-service", "wiresock-pro-client-service"):
+        subprocess.run(["sc.exe", "stop", name], capture_output=True, text=True)
+        result = subprocess.run(["sc.exe", "delete", name], capture_output=True, text=True)
+        if result.returncode == 0:
+            log(f"servico removido: {name}")
+    for command in wiresock_uninstall_commands():
+        log("$ " + command)
+        result = subprocess.run(command, shell=True, capture_output=True, text=True)
+        log(f"  codigo de saida {result.returncode}")
+    log("OK: WireSock removido")
+
+
+def remove_data(root: Path, keep_vpn_data: bool):
+    step("Apagando dados do plugin")
+    local_appdata = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
+    targets = [root] + [local_appdata / name for name in LEGACY_ROOT_NAMES]
+    if keep_vpn_data:
+        log(f"preservando o login Proton e o perfil em {local_appdata / VPN_DATA_DIR_NAME}")
+    else:
+        targets.append(local_appdata / VPN_DATA_DIR_NAME)
+    for target in targets:
+        if not target.exists():
+            continue
+        shutil.rmtree(target, ignore_errors=True)
+        log(("removido: " if not target.exists() else "removido parcialmente (arquivo em uso): ") + str(target))
+
+
+def uninstall(root: Path) -> int:
+    unpatch_discord(root / MOD_NAME)
+    remove_wiresock()
+    clean_plugin_settings()
+    remove_data(root, keep_vpn_data=False)
+    log("")
+    log("DESINSTALACAO CONCLUIDA.")
+    log("O Discord volta ao estado original na proxima vez que abrir.")
+    return 0
+
+
 LOGGER = None
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     global LOGGER
+    parser = argparse.ArgumentParser(description="Instalador do Mothlight para Windows x64.")
+    parser.add_argument("--modo", choices=("instalar", "reinstalar", "desinstalar"), default="instalar")
+    parser.add_argument("--sem-pausa", dest="sem_pausa", action="store_true",
+                        help="Nao espera Enter no fim (o .bat cuida da pausa)")
+    args = parser.parse_args(argv)
+
     if os.name != "nt":
         print("ERRO: este script foi feito para Windows.")
         return 1
@@ -307,18 +476,33 @@ def main() -> int:
     local_appdata = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
     root = local_appdata / "Mothlight"
     tools = root / "tools"
-    logs = root / "logs"
-    root.mkdir(parents=True, exist_ok=True)
+    # Na desinstalacao a raiz inteira sera apagada, entao o log nao pode morar
+    # dentro dela -- o arquivo aberto impediria a remocao da pasta.
+    if args.modo == "desinstalar":
+        logs = Path(tempfile.gettempdir()) / "mothlight-logs"
+    else:
+        logs = root / "logs"
+        root.mkdir(parents=True, exist_ok=True)
     logs.mkdir(parents=True, exist_ok=True)
-    log_path = logs / f"install-{time.strftime('%Y%m%d-%H%M%S')}.log"
+    log_path = logs / f"{args.modo}-{time.strftime('%Y%m%d-%H%M%S')}.log"
     LOGGER = log_path.open("w", encoding="utf-8")
     work = Path(tempfile.mkdtemp(prefix="Mothlight-"))
     script_dir = Path(__file__).resolve().parent
     log("=" * 54)
-    log(" Mothlight - Instalador Python automático")
+    log(f" Mothlight - {args.modo.capitalize()}")
     log("=" * 54)
     log(f"Log: {log_path}")
     try:
+        if args.modo == "desinstalar":
+            return uninstall(root)
+        if args.modo == "reinstalar":
+            # Recompila do zero, mas preserva o login Proton e o perfil da VPN.
+            previous = root / MOD_NAME
+            if previous.exists():
+                step(f"Apagando o clone anterior do {MOD_NAME}")
+                shutil.rmtree(previous, ignore_errors=True)
+                log(f"removido: {previous}")
+            clean_plugin_settings()
         install_git(tools)
         install_node(tools)
         install_pnpm(tools)
@@ -331,7 +515,7 @@ def main() -> int:
         log("Abra o Discord e ative Mothlight em Configurações > Plugins.")
         return 0
     except Exception as exc:
-        log(f"\nINSTALAÇÃO FALHOU: {exc}")
+        log(f"\n{args.modo.upper()} FALHOU: {exc}")
         log(f"Log completo: {log_path}")
         return 1
     finally:
@@ -342,5 +526,9 @@ def main() -> int:
 
 if __name__ == "__main__":
     code = main()
-    input("Pressione Enter para fechar...")
+    if "--sem-pausa" not in sys.argv:
+        try:
+            input("Pressione Enter para fechar...")
+        except EOFError:
+            pass
     raise SystemExit(code)

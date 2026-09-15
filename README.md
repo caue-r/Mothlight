@@ -1,6 +1,6 @@
 # Mothlight
 
-Userplugin do Vencord que devolve o Go Live e a câmera em contas atingidas pelo bloqueio de vídeo do Discord, e roteia somente o processo do Discord por um túnel WireGuard da ProtonVPN.
+Userplugin do Equicord que devolve o Go Live e a câmera em contas atingidas pelo bloqueio de vídeo do Discord, e roteia somente o processo do Discord por um túnel WireGuard da ProtonVPN.
 
 Fork de [Mockerz/YaniNeko](https://github.com/Mockerz/YaniNeko).
 
@@ -21,13 +21,27 @@ Fork de [Mockerz/YaniNeko](https://github.com/Mockerz/YaniNeko).
 
 ## Instalação
 
-Baixe o `1-INSTALAR.bat` do [último release](https://github.com/caue-r/Mothlight/releases/latest) e execute.
+Baixe o `1-INSTALAR.bat` do [último release](https://github.com/caue-r/Mothlight/releases/latest) e execute. Ele abre um menu com três opções:
 
-Ele baixa o `instalar_yanineko.py` deste repositório, instala Git, Node e pnpm em `%LOCALAPPDATA%\Mothlight\tools`, clona e compila o Vencord com o plugin, e injeta no Discord Stable. O Discord é fechado durante o processo.
+| Opção | O que faz |
+| --- | --- |
+| **1 Instalar** | Instala o que faltar, compila o Equicord com o plugin e injeta no Discord Stable |
+| **2 Reinstalar** | Apaga o build anterior, recompila do zero e reinjeta. **Preserva o login Proton** |
+| **3 Desinstalar** | Despatcheia o Discord, remove o WireSock do sistema e apaga todos os dados, **inclusive o login Proton**. Pede confirmação |
+
+Não é preciso preparar nada antes: se o Python 3 não estiver no sistema, o `.bat` o instala sozinho (winget, com o instalador oficial do python.org como reserva). Git, Node e pnpm são instalados em `%LOCALAPPDATA%\Mothlight\tools` e não mexem no resto da máquina. O Discord é fechado durante o processo.
 
 Depois, abra o Discord e ative **Mothlight** em Configurações > Plugins.
 
 O `.bat` sempre puxa o estado atual da branch `main`, não o código congelado na tag do release.
+
+Se preferir a linha de comando, o instalador aceita os mesmos modos:
+
+```
+py instalar_yanineko.py --modo instalar
+py instalar_yanineko.py --modo reinstalar
+py instalar_yanineko.py --modo desinstalar
+```
 
 ### A partir dos fontes locais
 
@@ -36,6 +50,8 @@ py instalar_local.py
 ```
 
 Opções: `--check` (valida e mostra os caminhos, sem alterar nada), `--vencord-dir` (usa uma cópia local do Vencord), `--install-deps`, `--no-pause`.
+
+Atenção: este é o caminho de desenvolvimento e ainda instala no **Vencord**, não no Equicord. Ele também não tem os modos de reinstalar e desinstalar. Para uso normal, prefira o `1-INSTALAR.bat`.
 
 ## Uso
 
@@ -66,15 +82,19 @@ O Windows vai pedir elevação: instalar o WireSock SDK e criar ou iniciar o ser
 | Caminho | Conteúdo |
 | --- | --- |
 | `%LOCALAPPDATA%\GoLiveBypass\plugin-vpn` | Perfil WireGuard, sessão Proton, snapshot de rota, `plugin-vpn.log` |
-| `%LOCALAPPDATA%\Mothlight` | Raiz da instalação: clone do Vencord, `tools`, `logs` |
+| `%LOCALAPPDATA%\Mothlight` | Raiz da instalação: clone do Equicord, `tools`, `logs` |
 
 O WireSock SDK 3.4.8.1 é baixado de `wiresock.net` e verificado por SHA-256 antes de instalar.
 
 ## Problemas
 
-`0-LIMPAR-WIRESOCK.bat` (pede administrador) encerra o túnel, remove os serviços do WireSock, apaga os perfis, a sessão Proton e as configurações do plugin.
+Para a maioria dos casos, use a opção **2 Reinstalar** do `1-INSTALAR.bat`: ela recompila tudo do zero sem te fazer entrar de novo na Proton.
 
-A limpeza do WireSock é **global**: ela derruba o WireSock de outros aplicativos e plugins, não só o deste. A instalação do Vencord não é afetada.
+`0-LIMPAR-WIRESOCK.bat` (pede administrador) é o martelo: encerra o túnel, remove os serviços do WireSock, apaga os perfis, a sessão Proton e as configurações do plugin, sem desinstalar o plugin.
+
+A limpeza do WireSock é **global**: ela derruba o WireSock de outros aplicativos e plugins, não só o deste. A instalação do Equicord não é afetada.
+
+Os instaladores não pedem elevação. O UAC aparece só na primeira ativação do bypass, para instalar o WireSock SDK e criar o serviço, e na desinstalação, para removê-los.
 
 ## Estrutura
 
