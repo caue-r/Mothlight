@@ -1,12 +1,12 @@
 @echo off
 chcp 65001 >nul
-title LefferzinBypass - Git Push Rapido
+title Mothlight - Git Push Rapido
 color 0A
 
 cd /d "%~dp0"
 
 echo ======================================================
-echo   LefferzinBypass - Push Rapido
+echo   Mothlight - Push Rapido
 echo ======================================================
 echo.
 

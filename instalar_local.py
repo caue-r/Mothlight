@@ -72,7 +72,7 @@ def contained(path: Path, root: Path) -> Path:
 def stage_plugin(source: Path, vencord: Path, backup: Path, hashes: dict[str, str]) -> Path:
     plugins = contained(vencord / "src/userplugins", vencord)
     plugins.mkdir(parents=True, exist_ok=True)
-    target = contained(plugins / "LefferzinBypass", vencord)
+    target = contained(plugins / "Mothlight", vencord)
     if target == source.resolve() or target in source.resolve().parents:
         raise RuntimeError("A pasta de origem não pode ser a cópia de destino do plugin.")
     stage = contained(plugins / (".yanineko-stage-" + uuid.uuid4().hex), vencord)
@@ -150,7 +150,7 @@ def main(argv=None) -> int:
     parser.add_argument("--vencord-dir", type=Path, help="Pasta de uma cópia local do Vencord")
     parser.add_argument("--no-pause", action="store_true", help="Não espera Enter ao terminar")
     args = parser.parse_args(argv)
-    root = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData/Local")) / "LefferzinBypass"
+    root = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData/Local")) / "Mothlight"
     vencord = (args.vencord_dir or root / "Vencord").resolve()
     try:
         hashes = validate_source(SOURCE)
@@ -195,8 +195,8 @@ def main(argv=None) -> int:
                 artifact = dist / filename
                 if not artifact.is_file() or artifact.stat().st_size == 0:
                     raise RuntimeError(f"Build incompleto: {artifact}")
-            if "LefferzinBypass" not in (dist / "renderer.js").read_text(encoding="utf-8"):
-                raise RuntimeError("O build não contém LefferzinBypass.")
+            if "Mothlight" not in (dist / "renderer.js").read_text(encoding="utf-8"):
+                raise RuntimeError("O build não contém Mothlight.")
             for folder in (dist / "bin/win32-x64", dist / "desktop/bin/win32-x64"):
                 folder.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(target / REQUIRED[-1], folder / "proton-confgen.exe")
@@ -225,7 +225,7 @@ def main(argv=None) -> int:
         output = run([str(installer), "-install", "-branch", "stable"], vencord, env)
         if re.search(r"\bERROR\b|\bFATAL\b", output, re.I) or not re.search(r"successfully|\bsuccess\b|\binstalled\b|\bpatched\b", output, re.I):
             raise RuntimeError("O instalador oficial não confirmou a instalação. Consulte o log.")
-        log("INSTALAÇÃO LOCAL CONCLUÍDA. Abra o Discord e ative LefferzinBypass em Plugins.")
+        log("INSTALAÇÃO LOCAL CONCLUÍDA. Abra o Discord e ative Mothlight em Plugins.")
         return 0
     except (Exception, KeyboardInterrupt) as error:
         log(f"ERRO: {error or 'Operação interrompida'}")

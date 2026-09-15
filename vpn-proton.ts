@@ -96,7 +96,7 @@ const GENERIC_PLAN_ERROR = "Não foi possível confirmar o plano Proton.";
 // O proton-confgen mantém uma conexão durante a operação. Instâncias
 // simultâneas podem ser recusadas pelo Proton como conexão duplicada.
 let confgenQueue: Promise<unknown> = Promise.resolve();
-const CONFGEN_LOCK_PATH = path.join(os.tmpdir(), "lefferzin-proton-confgen.lock");
+const CONFGEN_LOCK_PATH = path.join(os.tmpdir(), "mothlight-proton-confgen.lock");
 
 async function acquireConfgenLock(): Promise<() => void> {
     const deadline = Date.now() + 30_000;
@@ -139,7 +139,7 @@ function abortError(): Error {
 
 function candidatePaths(): string[] {
     const exeName = process.platform === "win32" ? "proton-confgen.exe" : "proton-confgen";
-    const pluginFolders = ["goLiveBypass", "LefferzinBypass"];
+    const pluginFolders = ["goLiveBypass", "Mothlight"];
     const appdata = process.env.APPDATA;
     const localappdata = process.env.LOCALAPPDATA || appdata;
     const equicordInstallDirs: string[] = [];
@@ -180,7 +180,7 @@ function candidatePaths(): string[] {
         ]),
         path.resolve(process.cwd(), "../tools/proton-confgen/build", exeName),
         path.resolve(process.cwd(), "bin/win32-x64", exeName),
-        path.resolve(process.cwd(), "LefferzinBypass/bin/win32-x64", exeName),
+        path.resolve(process.cwd(), "Mothlight/bin/win32-x64", exeName),
     ];
     const filtered = candidates.filter((value): value is string => typeof value === "string" && value.length > 0);
     return [...new Set(filtered.map(value => path.resolve(value)))];

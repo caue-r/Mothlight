@@ -20,11 +20,10 @@ import { defaultPluginVpnDataDir, PluginVpnController, type ProtonLoginPayload, 
 import * as proton from "./vpn-proton";
 import { safeDiagnosticDetail } from "./vpn-types";
 
-const PLUGIN_SETTINGS_KEY = "LefferzinBypass";
-const LEGACY_SETTINGS_KEY = "Lefferzin Bypass";
+const PLUGIN_SETTINGS_KEY = "Mothlight";
 const MAX_LOG_LINES = 400;
 const MAX_LOG_BYTES = 256 * 1024;
-const CAPTCHA_IPC_CHANNEL = "lefferzin-plugin-proton-captcha-response";
+const CAPTCHA_IPC_CHANNEL = "mothlight-plugin-proton-captcha-response";
 const CAPTCHA_TIMEOUT_MS = 120_000;
 
 const VPN_DATA_DIR = defaultPluginVpnDataDir();
@@ -87,26 +86,11 @@ function pluginSettings(): PluginSettingsRecord {
     if (current !== null && typeof current === "object" && Object.keys(current as object).length > 0) {
         return current as PluginSettingsRecord;
     }
-    const legacy = (plugins as Record<string, unknown>)[LEGACY_SETTINGS_KEY];
-    if (legacy !== null && typeof legacy === "object") {
-        try {
-            if (!RendererSettings.store.plugins) RendererSettings.store.plugins = {};
-            (RendererSettings.store.plugins as Record<string, PluginSettingsRecord>)[PLUGIN_SETTINGS_KEY] = { ...(legacy as PluginSettingsRecord) };
-            log("info", "configuracoes migradas da chave antiga para a nova");
-        } catch { /* ignora se nao conseguir migrar agora */ }
-        return legacy as PluginSettingsRecord;
-    }
     return {};
 }
 
 function pluginEnabled(): boolean {
-    const current = pluginSettings();
-    if (current.enabled === true) return true;
-    const root = RendererSettings.plain as { plugins?: unknown };
-    const plugins = root.plugins;
-    if (plugins === null || typeof plugins !== "object") return false;
-    const legacy = (plugins as Record<string, unknown>)[LEGACY_SETTINGS_KEY];
-    return legacy !== null && typeof legacy === "object" && (legacy as PluginSettingsRecord).enabled === true;
+    return pluginSettings().enabled === true;
 }
 
 function controllerSettings(): PluginSettingsRecord {

@@ -1,10 +1,10 @@
 {
-  "name": "LefferzinBypass",
+  "name": "Mothlight",
   "description": "Devolve o Go Live e a câmera para contas bloqueadas, com VPN WireGuard isolada só para este Discord",
   "authors": [
     {
-      "name": "L3ffer_",
-      "id": "406595579603451914"
+      "name": "Cauê",
+      "id": "574313740208701483"
     }
   ],
   "version": "1.0.1"

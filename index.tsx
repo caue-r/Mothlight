@@ -23,9 +23,9 @@ import {
     type StreamObservationStatus,
 } from "./stability";
 
-const Native = VencordNative?.pluginHelpers?.LefferzinBypass as PluginNative<typeof import("./native")> | undefined;
+const Native = VencordNative?.pluginHelpers?.Mothlight as PluginNative<typeof import("./native")> | undefined;
 
-const logger = new Logger("Lefferzin Bypass");
+const logger = new Logger("Mothlight");
 
 interface RegionStore {
     getPreferredRegion(): string | null;
@@ -662,7 +662,7 @@ function forceRegion() {
     if (typeof store.getPreferredRegion !== "function"
         || typeof store.getPreferredRegions !== "function"
         || typeof store.shouldIncludePreferredRegion !== "function") {
-        showToast("Lefferzin Bypass: não conseguiu encontrar o selecionador de região do Discord — sua região de chamada não foi alterada.", Toasts.Type.FAILURE);
+        showToast("Mothlight: não conseguiu encontrar o selecionador de região do Discord — sua região de chamada não foi alterada.", Toasts.Type.FAILURE);
         return;
     }
 
@@ -868,7 +868,7 @@ function pollStreamClaimOnce() {
     if (decision.warn) {
         record("stream.guard | UI afirma transmissao, mas nenhuma conexao nativa apareceu em 32s; possivel erro 2001, sem acao automatica");
         showToast(
-            "Lefferzin Bypass: Discord diz que você está transmitindo, mas nenhuma conexão Live apareceu em 32s (possível erro 2001). Pare a transmissão falsa, recarregue com Ctrl+R e tente de novo.",
+            "Mothlight: Discord diz que você está transmitindo, mas nenhuma conexão Live apareceu em 32s (possível erro 2001). Pare a transmissão falsa, recarregue com Ctrl+R e tente de novo.",
             Toasts.Type.FAILURE
         );
     } else if (previousStatus.startsWith("failed") && decision.status === "healthy") {
@@ -914,7 +914,7 @@ function stopStreamClaimWatch() {
 
 async function buildReport() {
     const user = UserStore.getCurrentUser();
-    const lines: string[] = ["Lefferzin Bypass, diagnostico"];
+    const lines: string[] = ["Mothlight, diagnostico"];
 
     lines.push("", "== o servidor te bloqueia? ==");
     lines.push(`atribuicao do video guard: ${JSON.stringify(user == null ? "sem usuario" : ask(ApexExperimentStore, "getServerAssignment", "user", user.id, VIDEO_GUARD))}`);
@@ -961,10 +961,10 @@ async function buildReport() {
 }
 
 export default definePlugin({
-    name: "LefferzinBypass",
+    name: "Mothlight",
     enabledByDefault: true,
     description: "Devolve o Go Live e a câmera para contas bloqueadas, com VPN WireGuard isolada só para este Discord.",
-    authors: [{ name: "L3ffer_", id: 406595579603451914n }],
+    authors: [{ name: "Cauê", id: 574313740208701483n }],
     tags: ["Voz", "Privacidade"],
     settings,
     settingsAboutComponent: AboutPlugin,
@@ -1034,7 +1034,7 @@ export default definePlugin({
                     void refresh();
                 } else {
                     void refresh();
-                    showToast(`Lefferzin Bypass não conseguiu ativar a VPN: ${result?.error || result?.message || "rode o 0-LIMPAR-WIRESOCK.bat"}`, Toasts.Type.FAILURE);
+                    showToast(`Mothlight não conseguiu ativar a VPN: ${result?.error || result?.message || "rode o 0-LIMPAR-WIRESOCK.bat"}`, Toasts.Type.FAILURE);
                 }
             }).catch(error => {
                 logger.error("Não conseguiu falar com o processo desktop", error);

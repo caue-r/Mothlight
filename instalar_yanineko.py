@@ -17,7 +17,7 @@ import urllib.error
 import zipfile
 from pathlib import Path
 
-REPO = "Mockerz/YaniNeko"
+REPO = "caue-r/YaniNeko"
 PLUGIN_BRANCH = "main"
 VENCORD_REPO = "https://github.com/Vendicated/Vencord.git"
 PNPM_VERSION = "11.9.0"
@@ -209,7 +209,7 @@ def prepare_vencord(install_root: Path, plugin_source: Path):
         run(["git", "fetch", "--depth", "1", "origin", "main"], cwd=vencord)
         run(["git", "reset", "--hard", "origin/main"], cwd=vencord)
         run(["git", "clean", "-fdx", "--exclude=node_modules"], cwd=vencord)
-    plugin = vencord / "src" / "userplugins" / "LefferzinBypass"
+    plugin = vencord / "src" / "userplugins" / "Mothlight"
     shutil.rmtree(plugin, ignore_errors=True)
     (plugin / "bin" / "win32-x64").mkdir(parents=True, exist_ok=True)
     for name in REQUIRED:
@@ -227,7 +227,7 @@ def build(vencord: Path, plugin_source: Path):
     renderer = vencord / "dist" / "renderer.js"
     if not renderer.is_file():
         fail("O build não gerou dist\\renderer.js.")
-    if "LefferzinBypass" not in renderer.read_text(encoding="utf-8", errors="ignore"):
+    if "Mothlight" not in renderer.read_text(encoding="utf-8", errors="ignore"):
         fail("O plugin não apareceu no renderer.js.")
     dist_bin = vencord / "dist" / "desktop" / "bin" / "win32-x64"
     dist_bin.mkdir(parents=True, exist_ok=True)
@@ -261,7 +261,7 @@ def main() -> int:
         print("ERRO: o projeto exige Windows 64-bit.")
         return 1
     local_appdata = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
-    root = local_appdata / "LefferzinBypass"
+    root = local_appdata / "Mothlight"
     tools = root / "tools"
     logs = root / "logs"
     root.mkdir(parents=True, exist_ok=True)
@@ -284,7 +284,7 @@ def main() -> int:
         inject(vencord)
         step("[8/8] Finalização")
         log("INSTALAÇÃO CONCLUÍDA.")
-        log("Abra o Discord e ative LefferzinBypass em Configurações > Plugins.")
+        log("Abra o Discord e ative Mothlight em Configurações > Plugins.")
         return 0
     except Exception as exc:
         log(f"\nINSTALAÇÃO FALHOU: {exc}")

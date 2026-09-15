@@ -168,7 +168,7 @@ export class PluginVpnController {
                 return;
             }
             if (owner && owner.pid !== process.pid && processAlive(owner.pid) && !owner.restarting) {
-                this.blockExternal("Outra instância do LefferzinBypass já controla esta sessão WireSock.");
+                this.blockExternal("Outra instância do Mothlight já controla esta sessão WireSock.");
                 return;
             }
             if (!this.options.isEnabled()) {
@@ -745,7 +745,7 @@ export class PluginVpnController {
         if (existing.active && existing.owned) {
             const owner = this.readOwner();
             if (owner && owner.pid !== process.pid && processAlive(owner.pid) && !owner.restarting) {
-                this.blockExternal("Outra instância do LefferzinBypass já controla esta sessão WireSock.");
+                this.blockExternal("Outra instância do Mothlight já controla esta sessão WireSock.");
                 return { success: false, state: this.state, error: this.externalReason || undefined };
             }
             if (this.state !== "active") {

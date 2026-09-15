@@ -48,18 +48,18 @@ rem Dados atuais do controlador: %%LOCALAPPDATA%%\GoLiveBypass\plugin-vpn
 if exist "%LOCALAPPDATA%\GoLiveBypass\plugin-vpn" rd /s /q "%LOCALAPPDATA%\GoLiveBypass\plugin-vpn"
 rem Possiveis dados legados em AppData Roaming ou com nome antigo
 if exist "%APPDATA%\GoLiveBypass\plugin-vpn" rd /s /q "%APPDATA%\GoLiveBypass\plugin-vpn"
-if exist "%LOCALAPPDATA%\LefferzinBypass\plugin-vpn" rd /s /q "%LOCALAPPDATA%\LefferzinBypass\plugin-vpn"
-if exist "%APPDATA%\LefferzinBypass\plugin-vpn" rd /s /q "%APPDATA%\LefferzinBypass\plugin-vpn"
+if exist "%LOCALAPPDATA%\Mothlight\plugin-vpn" rd /s /q "%LOCALAPPDATA%\Mothlight\plugin-vpn"
+if exist "%APPDATA%\Mothlight\plugin-vpn" rd /s /q "%APPDATA%\Mothlight\plugin-vpn"
 rem Dados antigos que podiam ter sido salvos na pasta pai da GUI
 for %%F in (wireguard.conf proton-session.json wireguard-client.conf optimized-profile.conf optimization-marker.json activation-state.json owner.lock migration-v1.json route-snapshot.json route-info.json plugin-vpn.log) do (
     del /q "%LOCALAPPDATA%\GoLiveBypass\%%F" >nul 2>&1
     del /q "%APPDATA%\GoLiveBypass\%%F" >nul 2>&1
-    del /q "%LOCALAPPDATA%\LefferzinBypass\%%F" >nul 2>&1
-    del /q "%APPDATA%\LefferzinBypass\%%F" >nul 2>&1
+    del /q "%LOCALAPPDATA%\Mothlight\%%F" >nul 2>&1
+    del /q "%APPDATA%\Mothlight\%%F" >nul 2>&1
 )
 
-echo Limpando somente as configuracoes do LefferzinBypass no Vencord/Equicord...
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$paths=@(\"$env:APPDATA\Vencord\settings.json\",\"$env:LOCALAPPDATA\Vencord\settings.json\",\"$env:APPDATA\Equicord\settings.json\",\"$env:LOCALAPPDATA\Equicord\settings.json\"); foreach($p in $paths){ if(Test-Path -LiteralPath $p){ try{ $j=Get-Content -LiteralPath $p -Raw | ConvertFrom-Json; if($j.plugins){ [void]$j.plugins.PSObject.Properties.Remove('LefferzinBypass'); [void]$j.plugins.PSObject.Properties.Remove('Lefferzin Bypass') }; $j | ConvertTo-Json -Depth 100 | Set-Content -LiteralPath $p -Encoding UTF8; Write-Host \"  configuracao limpa: $p\" } catch { Write-Host \"  aviso: nao consegui editar $p\" } } }"
+echo Limpando somente as configuracoes do Mothlight no Vencord/Equicord...
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$paths=@(\"$env:APPDATA\Vencord\settings.json\",\"$env:LOCALAPPDATA\Vencord\settings.json\",\"$env:APPDATA\Equicord\settings.json\",\"$env:LOCALAPPDATA\Equicord\settings.json\"); foreach($p in $paths){ if(Test-Path -LiteralPath $p){ try{ $j=Get-Content -LiteralPath $p -Raw | ConvertFrom-Json; if($j.plugins){ [void]$j.plugins.PSObject.Properties.Remove('Mothlight') }; $j | ConvertTo-Json -Depth 100 | Set-Content -LiteralPath $p -Encoding UTF8; Write-Host \"  configuracao limpa: $p\" } catch { Write-Host \"  aviso: nao consegui editar $p\" } } }"
 
 echo [5/5] Limpando DNS e verificando residuos...
 powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-NetAdapter -IncludeHidden | Where-Object { `$_.Name -match 'ProTUN|WireSock' -or `$_.InterfaceDescription -match 'ProTUN|WireSock' } | ForEach-Object { Set-DnsClientServerAddress -InterfaceIndex `$_.ifIndex -ResetServerAddresses -ErrorAction SilentlyContinue }" >nul 2>&1
