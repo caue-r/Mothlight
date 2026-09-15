@@ -17,6 +17,16 @@ import urllib.error
 import zipfile
 from pathlib import Path
 
+# A saida do pnpm/git traz caracteres fora da codepage ANSI do Windows (✓ e
+# afins). Sem isto, o print() aborta a instalacao com UnicodeEncodeError sempre
+# que stdout nao for um console em UTF-8 -- redirecionado, em pipe ou num
+# console que nao passou por chcp 65001.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 REPO = "caue-r/Mothlight"
 PLUGIN_BRANCH = "main"
 # Mod alvo da instalacao. Troque para "vencord" para voltar ao Vencord.
