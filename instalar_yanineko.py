@@ -22,7 +22,7 @@ PLUGIN_BRANCH = "main"
 VENCORD_REPO = "https://github.com/Vendicated/Vencord.git"
 PNPM_VERSION = "11.9.0"
 REQUIRED = [
-    "manifest.json", "index.tsx", "native.ts", "presence.ts", "stability.ts",
+    "manifest.json", "index.tsx", "native.ts", "stability.ts",
     "vpn-controller.ts", "vpn-proton.ts", "vpn-types.ts", "vpn-windows.ts",
 ]
 

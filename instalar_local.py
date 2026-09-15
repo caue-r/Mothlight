@@ -18,7 +18,7 @@ from pathlib import Path
 
 SOURCE = Path(__file__).resolve().parent
 REQUIRED = (
-    "manifest.json", "index.tsx", "native.ts", "presence.ts", "stability.ts",
+    "manifest.json", "index.tsx", "native.ts", "stability.ts",
     "vpn-controller.ts", "vpn-proton.ts", "vpn-types.ts", "vpn-windows.ts",
     "bin/win32-x64/proton-confgen.exe",
 )

@@ -22,7 +22,6 @@ import {
     type StreamObservation,
     type StreamObservationStatus,
 } from "./stability";
-import { startPresence, stopPresence, updateRouteInfo } from "./presence";
 
 const Native = VencordNative?.pluginHelpers?.LefferzinBypass as PluginNative<typeof import("./native")> | undefined;
 
@@ -81,8 +80,8 @@ let lastStreamObservation: {
     nativeStreamCount: number | null;
 } | null = null;
 let lastSelectedStreamRegion: string | null = null;
-let presenceStatusTimer: ReturnType<typeof setInterval> | null = null;
-let presenceStatusBusy = false;
+let vpnStatusTimer: ReturnType<typeof setInterval> | null = null;
+let vpnStatusBusy = false;
 let pluginRunning = false;
 let pluginGeneration = 0;
 let routeCheckTimer: ReturnType<typeof setInterval> | null = null;
@@ -117,7 +116,7 @@ async function checkRouteAutomatically(): Promise<void> {
             const selected = result.selectedServer || result.server || "uma rota alternativa";
             const load = typeof result.currentLoad === "number" ? ` (carga anterior: ${result.currentLoad}%)` : "";
             showToast(`Rota limpa ativada: ${selected}${load}. Discord continua conectado.`, Toasts.Type.SUCCESS);
-            await refreshPresenceStatus();
+            await refreshVpnStatus();
         } else if (result?.checked === true && typeof result.currentLoad === "number" && result.currentLoad > 70) {
             const candidates = typeof result.pingCandidates === "number" ? ` Foram comparadas ${result.pingCandidates} rotas de menor carga.` : "";
             showToast(`Rota atual acima de 70% (${Math.round(result.currentLoad)}%). Não foi possível trocar a rota.${candidates}`, (Toasts.Type as { WARNING?: unknown }).WARNING ?? Toasts.Type.MESSAGE);
@@ -141,24 +140,18 @@ function stopAutomaticRouteMonitor(): void {
     routeCheckTimer = null;
 }
 
-async function refreshPresenceStatus(): Promise<void> {
-    if (!Native || !pluginRunning || presenceStatusBusy) return;
-    presenceStatusBusy = true;
+async function refreshVpnStatus(): Promise<void> {
+    if (!Native || !pluginRunning || vpnStatusBusy) return;
+    vpnStatusBusy = true;
     const generation = pluginGeneration;
     try {
         const status = await Native.getVpnStatus() as PluginVpnStatus;
         if (!pluginRunning || generation !== pluginGeneration) return;
         notifyVpnStatus(status);
-        if (status.active === true) {
-            startPresence(status.routeId, status.routeCountry, status.routeCity, status.pingMs);
-            updateRouteInfo(status.routeId, status.routeCountry, status.routeCity, status.pingMs);
-        } else {
-            stopPresence();
-        }
     } catch (error) {
-        logger.error("Falha ao atualizar o status global do Presence", error);
+        logger.error("Falha ao atualizar o estado da VPN", error);
     } finally {
-        presenceStatusBusy = false;
+        vpnStatusBusy = false;
     }
 }
 
@@ -348,19 +341,6 @@ function VpnPanel() {
         return () => clearInterval(timer);
     }, []);
 
-    useEffect(() => {
-        if (!Native) return;
-        if (status?.active === true) {
-            startPresence(status?.routeId, status?.routeCountry, status?.routeCity, status?.pingMs);
-        } else if (status?.state === "blocked_external" || status?.state === "recovery_required") {
-            stopPresence();
-        }
-    }, [status?.active, status?.state, Native, status?.routeId, status?.routeCountry, status?.routeCity, status?.pingMs]);
-
-    useEffect(() => {
-        updateRouteInfo(status?.routeId ?? null, status?.routeCountry ?? null, status?.routeCity ?? null, status?.pingMs ?? null);
-    }, [status?.routeId, status?.routeCountry, status?.routeCity, status?.pingMs]);
-
     const login = async () => {
         if (!Native || busy || optimizing || starting || logoutBusy) return;
         setBusy(true);
@@ -371,7 +351,6 @@ function VpnPanel() {
             setPassword("");
             setTwoFactorCode("");
             showToast("Logado na Proton. Subindo bypass automaticamente...", Toasts.Type.SUCCESS);
-            startPresence();
             await refresh();
             if (Native) {
                 const enabled = await Native.enable(false);
@@ -464,12 +443,8 @@ function VpnPanel() {
         setBusy(true);
         try {
             showToast("Iniciando o túnel VPN...", Toasts.Type.MESSAGE);
-            startPresence();
             const result = await Native.enable(false) as { success?: boolean; error?: string; message?: string; state?: string };
             if (result.success === false) {
-                if (result.state === "blocked_external" || /outro perfil|GUI|plugin|externo/i.test(String(result.error || result.message || ""))) {
-                    stopPresence();
-                }
                 throw new Error(result.error || result.message || "Não foi possível ativar o bypass.");
             }
             showToast("Bypass ativado - VPN em tunel isolado.", Toasts.Type.SUCCESS);
@@ -491,11 +466,9 @@ function VpnPanel() {
             const typed = Native as PluginNative<typeof import("./native")>;
             const result = await typed.recoverAndStart() as { success?: boolean; error?: string; message?: string };
             if (result.success === false) throw new Error(result.error || result.message || "Não foi possível recuperar o WireSock.");
-            startPresence();
             showToast("WireSock recuperado e bypass ativado usando o perfil existente.", Toasts.Type.SUCCESS);
             await refresh();
         } catch (error) {
-            stopPresence();
             showToast(`Recuperar bypass: ${error instanceof Error ? error.message : String(error)}`, Toasts.Type.FAILURE);
         } finally {
             setStarting(false);
@@ -509,7 +482,6 @@ function VpnPanel() {
         setBusy(true);
         try {
             showToast("Encerrando a VPN e desconectando da Proton...", Toasts.Type.MESSAGE);
-            stopPresence();
             const typed = Native as PluginNative<typeof import("./native")>;
             const result = await typed.fullLogout();
             if (!result.success) {
@@ -1049,17 +1021,15 @@ export default definePlugin({
         forceRegion();
         startStreamClaimWatch();
         if (!Native) return;
-        void refreshPresenceStatus();
-        presenceStatusTimer = setInterval(() => void refreshPresenceStatus(), 15_000);
+        void refreshVpnStatus();
+        vpnStatusTimer = setInterval(() => void refreshVpnStatus(), 15_000);
             Native.getProtonSettings().then(settings => {
             const hasUsername = typeof settings?.protonUsername === "string" && settings.protonUsername.trim() !== "";
             const hasSession = typeof (settings as { sessionUsername?: unknown })?.sessionUsername === "string"
                 && (settings as { sessionUsername: string }).sessionUsername.trim() !== "";
             if (!hasUsername && !hasSession) return;
-            startPresence();
             void Native.enable(false).then(result => {
                 if (result?.success === true) {
-                    startPresence(settings.activatedRouteId ?? null, settings.routeCountry ?? null, settings.routeCity ?? null, settings.pingMs ?? null);
                     startAutomaticRouteMonitor();
                     void refresh();
                 } else {
@@ -1075,12 +1045,11 @@ export default definePlugin({
     stop() {
         pluginRunning = false;
         pluginGeneration++;
-        if (presenceStatusTimer) {
-            clearInterval(presenceStatusTimer);
-            presenceStatusTimer = null;
+        if (vpnStatusTimer) {
+            clearInterval(vpnStatusTimer);
+            vpnStatusTimer = null;
         }
         stopAutomaticRouteMonitor();
-        stopPresence();
         stopStreamClaimWatch();
         restoreRegion();
         // Desativar o plugin só pode parar a sessão que ele consegue provar
