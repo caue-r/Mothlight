@@ -19,7 +19,15 @@ from pathlib import Path
 
 REPO = "caue-r/Mothlight"
 PLUGIN_BRANCH = "main"
-VENCORD_REPO = "https://github.com/Vendicated/Vencord.git"
+# Mod alvo da instalacao. Troque para "vencord" para voltar ao Vencord.
+MOD = "equicord"
+MODS = {
+    "vencord": {"name": "Vencord", "repo": "https://github.com/Vendicated/Vencord.git", "branch": "main"},
+    "equicord": {"name": "Equicord", "repo": "https://github.com/Equicord/Equicord.git", "branch": "main"},
+}
+MOD_NAME = MODS[MOD]["name"]
+MOD_REPO = MODS[MOD]["repo"]
+MOD_BRANCH = MODS[MOD]["branch"]
 PNPM_VERSION = "11.9.0"
 REQUIRED = [
     "manifest.json", "index.tsx", "native.ts", "stability.ts",
@@ -201,51 +209,67 @@ def download_plugin(work: Path, script_dir: Path) -> Path:
     return script_dir
 
 
-def prepare_vencord(install_root: Path, plugin_source: Path):
-    step("[5/8] Baixando ou atualizando o Vencord")
-    vencord = install_root / "Vencord"
-    if not (vencord / ".git").is_dir():
-        shutil.rmtree(vencord, ignore_errors=True)
-        run(["git", "clone", "--depth", "1", VENCORD_REPO, str(vencord)], cwd=install_root)
+def prepare_mod(install_root: Path, plugin_source: Path):
+    step(f"[5/8] Baixando ou atualizando o {MOD_NAME}")
+    mod_dir = install_root / MOD_NAME
+    if not (mod_dir / ".git").is_dir():
+        shutil.rmtree(mod_dir, ignore_errors=True)
+        run(["git", "clone", "--depth", "1", MOD_REPO, str(mod_dir)], cwd=install_root)
     else:
-        run(["git", "fetch", "--depth", "1", "origin", "main"], cwd=vencord)
-        run(["git", "reset", "--hard", "origin/main"], cwd=vencord)
-        run(["git", "clean", "-fdx", "--exclude=node_modules"], cwd=vencord)
-    plugin = vencord / "src" / "userplugins" / "Mothlight"
+        run(["git", "fetch", "--depth", "1", "origin", MOD_BRANCH], cwd=mod_dir)
+        run(["git", "reset", "--hard", f"origin/{MOD_BRANCH}"], cwd=mod_dir)
+        run(["git", "clean", "-fdx", "--exclude=node_modules"], cwd=mod_dir)
+    plugin = mod_dir / "src" / "userplugins" / "Mothlight"
     shutil.rmtree(plugin, ignore_errors=True)
     (plugin / "bin" / "win32-x64").mkdir(parents=True, exist_ok=True)
     for name in REQUIRED:
         shutil.copy2(plugin_source / name, plugin / name)
     shutil.copy2(plugin_source / "bin" / "win32-x64" / "proton-confgen.exe", plugin / "bin" / "win32-x64")
-    log("OK: Vencord e plugin preparados")
-    return vencord
+    log(f"OK: {MOD_NAME} e plugin preparados")
+    return mod_dir
 
 
-def build(vencord: Path, plugin_source: Path):
+def pnpm_for(mod_dir: Path) -> str:
+    """Ativa a versao de pnpm que o repositorio declara em packageManager."""
+    try:
+        declared = json.loads((mod_dir / "package.json").read_text(encoding="utf-8")).get("packageManager", "")
+    except Exception:
+        declared = ""
+    if declared.startswith("pnpm@"):
+        wanted = declared.split("@", 1)[1]
+        if wanted != PNPM_VERSION:
+            corepack = shutil.which("corepack")
+            if corepack:
+                log(f"{MOD_NAME} exige pnpm {wanted}; ativando essa versao.")
+                run([corepack, "prepare", f"pnpm@{wanted}", "--activate"])
+    return shutil.which("pnpm") or "pnpm"
+
+
+def build(mod_dir: Path, plugin_source: Path):
     step("[6/8] Instalando dependências e compilando")
-    pnpm = shutil.which("pnpm") or "pnpm"
-    run([pnpm, "install", "--frozen-lockfile"], cwd=vencord)
-    run([pnpm, "build"], cwd=vencord)
-    renderer = vencord / "dist" / "renderer.js"
+    pnpm = pnpm_for(mod_dir)
+    run([pnpm, "install", "--frozen-lockfile"], cwd=mod_dir)
+    run([pnpm, "build"], cwd=mod_dir)
+    renderer = mod_dir / "dist" / "renderer.js"
     if not renderer.is_file():
         fail("O build não gerou dist\\renderer.js.")
     if "Mothlight" not in renderer.read_text(encoding="utf-8", errors="ignore"):
         fail("O plugin não apareceu no renderer.js.")
-    dist_bin = vencord / "dist" / "desktop" / "bin" / "win32-x64"
+    dist_bin = mod_dir / "dist" / "desktop" / "bin" / "win32-x64"
     dist_bin.mkdir(parents=True, exist_ok=True)
     shutil.copy2(plugin_source / "bin" / "win32-x64" / "proton-confgen.exe", dist_bin)
     log("OK: build validado e binário copiado")
 
 
-def inject(vencord: Path):
+def inject(mod_dir: Path):
     step("[7/8] Fechando Discord e instalando no Discord Stable")
     for process in ("Discord", "Update"):
         subprocess.run(["taskkill", "/F", "/IM", process + ".exe"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     time.sleep(3)
-    installer = vencord / "scripts" / "runInstaller.mjs"
+    installer = mod_dir / "scripts" / "runInstaller.mjs"
     if not installer.is_file():
-        fail("Injetor oficial do Vencord não foi encontrado.")
-    result = run(["node", str(installer), "--", "--install", "-branch", "stable"], cwd=vencord, check=False)
+        fail(f"Injetor oficial do {MOD_NAME} não foi encontrado.")
+    result = run(["node", str(installer), "--", "--install", "-branch", "stable"], cwd=mod_dir, check=False)
     combined = result.stdout or ""
     if result.returncode != 0 or not re.search(r"success|installed|patched|already", combined, re.I):
         fail("A injeção não foi confirmada pelo instalador oficial.")
@@ -281,9 +305,9 @@ def main() -> int:
         install_node(tools)
         install_pnpm(tools)
         plugin_source = download_plugin(work, script_dir)
-        vencord = prepare_vencord(root, plugin_source)
-        build(vencord, plugin_source)
-        inject(vencord)
+        mod_dir = prepare_mod(root, plugin_source)
+        build(mod_dir, plugin_source)
+        inject(mod_dir)
         step("[8/8] Finalização")
         log("INSTALAÇÃO CONCLUÍDA.")
         log("Abra o Discord e ative Mothlight em Configurações > Plugins.")
