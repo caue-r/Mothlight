@@ -90,7 +90,13 @@ function pluginSettings(): PluginSettingsRecord {
 }
 
 function pluginEnabled(): boolean {
-    return pluginSettings().enabled === true;
+    const stored = pluginSettings();
+    // O plugin declara enabledByDefault: true, entao o renderer roda antes de
+    // existir qualquer chave em settings.json. Exigir enabled === true aqui
+    // fazia o native concluir "plugin desativado" e derrubar o tunel que o
+    // renderer tinha acabado de subir. So um false explicito desativa.
+    if (typeof stored.enabled === "boolean") return stored.enabled;
+    return true;
 }
 
 function controllerSettings(): PluginSettingsRecord {
