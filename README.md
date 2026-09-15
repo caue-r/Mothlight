@@ -21,7 +21,7 @@ Fork de [Mockerz/YaniNeko](https://github.com/Mockerz/YaniNeko).
 
 ## Instalação
 
-Baixe o `1-INSTALAR.bat` do [último release](https://github.com/caue-r/YaniNeko/releases/latest) e execute.
+Baixe o `1-INSTALAR.bat` do [último release](https://github.com/caue-r/Mothlight/releases/latest) e execute.
 
 Ele baixa o `instalar_yanineko.py` deste repositório, instala Git, Node e pnpm em `%LOCALAPPDATA%\Mothlight\tools`, clona e compila o Vencord com o plugin, e injeta no Discord Stable. O Discord é fechado durante o processo.
 

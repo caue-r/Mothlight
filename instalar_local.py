@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Instala os fontes locais do YaniNeko no Discord Stable (Windows x64)."""
+"""Instala os fontes locais do Mothlight no Discord Stable (Windows x64)."""
 from __future__ import annotations
 
 import argparse
@@ -75,7 +75,7 @@ def stage_plugin(source: Path, vencord: Path, backup: Path, hashes: dict[str, st
     target = contained(plugins / "Mothlight", vencord)
     if target == source.resolve() or target in source.resolve().parents:
         raise RuntimeError("A pasta de origem não pode ser a cópia de destino do plugin.")
-    stage = contained(plugins / (".yanineko-stage-" + uuid.uuid4().hex), vencord)
+    stage = contained(plugins / (".mothlight-stage-" + uuid.uuid4().hex), vencord)
     stage.mkdir()
     try:
         for name in REQUIRED:
@@ -127,7 +127,7 @@ def ensure_installer(vencord: Path) -> Path:
         part = target.with_suffix(".download")
         request = urllib.request.Request(
             "https://github.com/Vencord/Installer/releases/latest/download/VencordInstallerCli.exe",
-            headers={"User-Agent": "YaniNeko-local-installer"},
+            headers={"User-Agent": "Mothlight-local-installer"},
         )
         try:
             with urllib.request.urlopen(request, timeout=120) as response, part.open("wb") as output:

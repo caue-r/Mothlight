@@ -7,7 +7,7 @@ cd /d "%~dp0"
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "$ErrorActionPreference='SilentlyContinue'; if (Test-Path -LiteralPath '%~f0') { Unblock-File -LiteralPath '%~f0' }" 2>nul
 
-set "REPO=caue-r/YaniNeko"
+set "REPO=caue-r/Mothlight"
 set "BRANCH=main"
 set "SCRIPT=instalar_yanineko.py"
 set "RAW=https://raw.githubusercontent.com/%REPO%/%BRANCH%/%SCRIPT%"

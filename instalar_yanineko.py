@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Instalador automático do YaniNeko/Vencord para Windows x64.
+"""Instalador automático do Mothlight/Vencord para Windows x64.
 Uso: py instalar_yanineko.py
 """
 from __future__ import annotations
@@ -17,7 +17,7 @@ import urllib.error
 import zipfile
 from pathlib import Path
 
-REPO = "caue-r/YaniNeko"
+REPO = "caue-r/Mothlight"
 PLUGIN_BRANCH = "main"
 VENCORD_REPO = "https://github.com/Vendicated/Vencord.git"
 PNPM_VERSION = "11.9.0"
@@ -63,7 +63,7 @@ def run(command: list[str], cwd: Path | None = None, check: bool = True) -> subp
 def download(url: str, target: Path, attempts: int = 3):
     target.parent.mkdir(parents=True, exist_ok=True)
     part = target.with_suffix(target.suffix + ".part")
-    headers = {"User-Agent": "YaniNeko-installer/1.0"}
+    headers = {"User-Agent": "Mothlight-installer/1.0"}
     for attempt in range(1, attempts + 1):
         try:
             log(f"Download ({attempt}/{attempts}): {url}")
@@ -111,7 +111,7 @@ def install_git(tools: Path):
     try:
         request = urllib.request.Request(
             "https://api.github.com/repos/git-for-windows/git/releases/latest",
-            headers={"User-Agent": "YaniNeko-installer/1.0"},
+            headers={"User-Agent": "Mothlight-installer/1.0"},
         )
         with urllib.request.urlopen(request, timeout=60) as response:
             release = json.load(response)
@@ -141,7 +141,7 @@ def install_node(tools: Path):
             return
     step("[2/8] Instalando Node.js 22 portátil")
     arch = "x64" if sys.maxsize > 2**32 else "x86"
-    request = urllib.request.Request("https://nodejs.org/dist/index.json", headers={"User-Agent": "YaniNeko-installer/1.0"})
+    request = urllib.request.Request("https://nodejs.org/dist/index.json", headers={"User-Agent": "Mothlight-installer/1.0"})
     with urllib.request.urlopen(request, timeout=60) as response:
         releases = json.load(response)
     release = next((r for r in releases if r.get("version", "").startswith("v22.") and f"win-{arch}-zip" in r.get("files", [])), None)
@@ -175,15 +175,17 @@ def install_pnpm(tools: Path):
 
 
 def download_plugin(work: Path, script_dir: Path) -> Path:
-    step("[4/8] Baixando o plugin YaniNeko")
-    archive = work / "yanineko.zip"
-    extracted = work / "yanineko"
+    step("[4/8] Baixando o plugin Mothlight")
+    archive = work / "mothlight.zip"
+    extracted = work / "mothlight"
     download(f"https://github.com/{REPO}/archive/refs/heads/{PLUGIN_BRANCH}.zip", archive)
     extract_zip(archive, extracted)
-    roots = [p for p in extracted.iterdir() if p.is_dir() and p.name.startswith("YaniNeko-")]
-    if not roots:
-        fail("ZIP do plugin não contém a pasta YaniNeko esperada.")
-    source = roots[0]
+    expected = REPO.split("/")[-1] + "-"
+    roots = [p for p in extracted.iterdir() if p.is_dir()]
+    match = [p for p in roots if p.name.startswith(expected)] or roots
+    if len(match) != 1:
+        fail(f"ZIP do plugin não contém uma única pasta raiz: {sorted(p.name for p in roots)}")
+    source = match[0]
     for name in REQUIRED:
         if not (source / name).is_file():
             fail(f"Arquivo obrigatório ausente no plugin: {name}")
@@ -268,10 +270,10 @@ def main() -> int:
     logs.mkdir(parents=True, exist_ok=True)
     log_path = logs / f"install-{time.strftime('%Y%m%d-%H%M%S')}.log"
     LOGGER = log_path.open("w", encoding="utf-8")
-    work = Path(tempfile.mkdtemp(prefix="YaniNeko-"))
+    work = Path(tempfile.mkdtemp(prefix="Mothlight-"))
     script_dir = Path(__file__).resolve().parent
     log("=" * 54)
-    log(" YaniNeko - Instalador Python automático")
+    log(" Mothlight - Instalador Python automático")
     log("=" * 54)
     log(f"Log: {log_path}")
     try:
