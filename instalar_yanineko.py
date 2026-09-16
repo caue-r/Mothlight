@@ -13,6 +13,7 @@ import json
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -230,23 +231,52 @@ def close_discord():
     time.sleep(3)
 
 
-def remove_tree(target: Path):
-    """Apaga de verdade, ou falha dizendo o porque.
+def force_rmtree(target: Path) -> bool:
+    """Remove a arvore mesmo com arquivos somente-leitura.
 
-    O Discord patcheado carrega de <mod>/dist/desktop, entao com ele aberto os
-    arquivos ficam travados e o rmtree apaga so uma parte. Engolir isso deixava
-    para tras um .git oco, que passava na checagem e quebrava o git fetch.
+    O git grava os objetos de .git/objects com modo 0444. O shutil.rmtree para
+    neles no Windows com PermissionError (WinError 5) e deixa para tras um .git
+    pela metade -- que depois passa em qualquer checagem de existencia e faz o
+    git fetch morrer com "not a git repository". Nao e arquivo preso por
+    processo: o atributo esta no disco e sobrevive a reinicializacao.
     """
+    def destrava(func, path, _erro):
+        try:
+            os.chmod(path, stat.S_IWRITE)
+            func(path)
+        except Exception:
+            pass
+
+    # O parametro onerror virou onexc no Python 3.12; os dois recebem 3 args.
+    argumento = {"onexc": destrava} if sys.version_info >= (3, 12) else {"onerror": destrava}
+    try:
+        shutil.rmtree(target, **argumento)
+    except Exception:
+        pass
+    return not target.exists()
+
+
+def remove_tree(target: Path):
+    """Apaga de verdade, ou falha dizendo o porque."""
     if not target.exists():
         return
-    shutil.rmtree(target, ignore_errors=True)
-    if target.exists():
-        log("arquivos em uso; fechando o Discord para concluir a remocao")
-        close_discord()
-        shutil.rmtree(target, ignore_errors=True)
-    if target.exists():
-        fail(f"Nao consegui apagar {target}. Feche o Discord e tente de novo.")
-    log(f"removido: {target}")
+    if force_rmtree(target):
+        log(f"removido: {target}")
+        return
+    # So agora vale suspeitar de arquivo aberto: o Discord patcheado carrega de
+    # <mod>/dist/desktop e mantem esses arquivos em uso enquanto estiver aberto.
+    log("sobrou arquivo em uso; fechando o Discord e tentando de novo")
+    close_discord()
+    if force_rmtree(target):
+        log(f"removido: {target}")
+        return
+    # Ultimo recurso: o rd do Windows resolve casos que o Python nao alcanca.
+    log("tentando pelo rd do Windows")
+    subprocess.run(["cmd", "/c", "rd", "/s", "/q", str(target)], capture_output=True)
+    if not target.exists():
+        log(f"removido: {target}")
+        return
+    fail(f"Nao consegui apagar {target}. Feche o Discord e tente de novo.")
 
 
 def is_git_repo(path: Path) -> bool:
