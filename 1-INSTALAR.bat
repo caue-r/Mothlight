@@ -11,7 +11,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
 set "REPO=caue-r/Mothlight"
 set "BRANCH=main"
 set "SCRIPT=instalar_yanineko.py"
-set "RAW=https://raw.githubusercontent.com/%REPO%/%BRANCH%/%SCRIPT%"
+rem A query nao muda o arquivo servido, mas cria uma chave de cache propria no
+rem CDN do raw.githubusercontent. Sem isso, uma correcao recem-publicada demora
+rem ate ~5 minutos para chegar, e o usuario roda a versao antiga sem saber.
+set "RAW=https://raw.githubusercontent.com/%REPO%/%BRANCH%/%SCRIPT%?nocache=%RANDOM%%TIME:~6,2%%TIME:~9,2%"
 set "WORK=%TEMP%\mothlight-bootstrap"
 set "PYVER=3.12.10"
 set "PYURL=https://www.python.org/ftp/python/%PYVER%/python-%PYVER%-amd64.exe"
