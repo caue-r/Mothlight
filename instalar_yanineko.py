@@ -350,16 +350,49 @@ def build(mod_dir: Path, plugin_source: Path):
     log("OK: build validado e binário copiado")
 
 
+def repair_discord():
+    """Conserta o Discord deixado sem app.asar por um unpatch interrompido.
+
+    O patch troca resources/app.asar por um stub e guarda o original como
+    _app.asar. Se o injetor falha entre apagar um e restaurar o outro, o
+    Discord fica sem app.asar e nao abre -- e o patch seguinte tambem falha,
+    porque nao ha o que despatchear.
+    """
+    discord = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "Discord"
+    for app in sorted(discord.glob("app-*")):
+        stub = app / "resources" / "app.asar"
+        original = app / "resources" / "_app.asar"
+        if stub.exists() or not original.is_file():
+            continue
+        try:
+            original.rename(stub)
+            log(f"reparado: {app.name} estava sem app.asar; restaurado a partir de _app.asar")
+        except Exception as exc:
+            log(f"aviso: nao consegui restaurar {stub}: {exc}")
+
+
 def inject(mod_dir: Path):
     step("[7/8] Fechando Discord e instalando no Discord Stable")
     close_discord()
+    repair_discord()
     installer = mod_dir / "scripts" / "runInstaller.mjs"
     if not installer.is_file():
         fail(f"Injetor oficial do {MOD_NAME} não foi encontrado.")
     result = run(["node", str(installer), "--", "--install", "-branch", "stable"], cwd=mod_dir, check=False)
     combined = result.stdout or ""
-    if result.returncode != 0 or not re.search(r"success|installed|patched|already", combined, re.I):
-        fail("A injeção não foi confirmada pelo instalador oficial.")
+    # O injetor imprime linhas informativas como "is already patched" e
+    # "Unpatching" mesmo quando fracassa. A checagem antiga procurava
+    # "patched|already" em qualquer lugar da saida e por isso dava sucesso em
+    # cima de um "Failed!" -- a instalacao terminava dizendo CONCLUIDA com o
+    # Discord sem patch nenhum. Agora o marcador de falha tem prioridade e o
+    # sucesso precisa ser afirmado explicitamente.
+    if re.search(r"❌|Failed!|Something went wrong", combined, re.I):
+        fail("O injetor oficial reportou falha. Feche o Discord completamente (inclusive na bandeja) "
+             "e tente de novo. Se persistir, desinstale outros mods do Discord antes.")
+    if result.returncode != 0:
+        fail(f"O injetor oficial saiu com código {result.returncode}.")
+    if not re.search(r"Successfully patched", combined, re.I):
+        fail("O injetor não confirmou o patch.")
     log("OK: injeção concluída")
 
 
@@ -408,7 +441,15 @@ def verify(mod_dir: Path) -> bool:
             log(f"FALHA: {app.name} nao esta patcheado.")
             ok = False
     if not encontrados:
-        log(f"FALHA: nenhuma instalacao do Discord encontrada em {discord}.")
+        pastas = sorted(discord.glob("app-*"))
+        quebrados = [a.name for a in pastas if not (a / "resources" / "app.asar").exists()]
+        if quebrados:
+            log(f"FALHA: {', '.join(quebrados)} esta sem resources/app.asar. "
+                "O Discord nao vai abrir ate isso ser restaurado.")
+        elif pastas:
+            log(f"FALHA: nenhuma das pastas {', '.join(a.name for a in pastas)} tem um app.asar utilizavel.")
+        else:
+            log(f"FALHA: nenhuma instalacao do Discord encontrada em {discord}.")
         ok = False
     return ok
 
