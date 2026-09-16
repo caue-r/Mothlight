@@ -27,6 +27,27 @@ const Native = VencordNative?.pluginHelpers?.Mothlight as PluginNative<typeof im
 
 const logger = new Logger("Mothlight");
 
+const PROTON_ACCOUNT_URL = "https://account.protonvpn.com/";
+const REPOSITORY_URL = "https://github.com/caue-r/Mothlight";
+
+/**
+ * Abre o link no navegador do sistema. O renderer do Discord nao navega para
+ * fora, entao o caminho certo e pedir ao processo desktop; o window.open fica
+ * como reserva para quando esse helper nao estiver disponivel.
+ */
+function openExternal(url: string): void {
+    try {
+        const native = (VencordNative as { native?: { openExternal?(value: string): unknown } })?.native;
+        if (typeof native?.openExternal === "function") {
+            void native.openExternal(url);
+            return;
+        }
+    } catch (error) {
+        logger.error("nao consegui abrir o link pelo processo desktop", error);
+    }
+    window.open(url, "_blank", "noopener,noreferrer");
+}
+
 interface RegionStore {
     getPreferredRegion(): string | null;
     getPreferredRegions(): string[] | null;
@@ -639,6 +660,15 @@ function VpnPanel() {
                     </div>
                 </div>
             )}
+
+            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                <Button onClick={() => openExternal(PROTON_ACCOUNT_URL)} look={Button.Looks.OUTLINED ?? undefined}>
+                    Conta Proton VPN
+                </Button>{" "}
+                <Button onClick={() => openExternal(REPOSITORY_URL)} look={Button.Looks.OUTLINED ?? undefined}>
+                    Repositorio no GitHub
+                </Button>
+            </div>
 
             <Paragraph style={{ color: "var(--text-muted)", fontSize: "12px", margin: 0 }}>
                 O bypass sobe automaticamente quando o Discord abre. Se trocar de pais ou servidor, clique em Otimizar rotas.
