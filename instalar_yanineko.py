@@ -224,11 +224,47 @@ def download_plugin(work: Path, script_dir: Path) -> Path:
     return script_dir
 
 
+def close_discord():
+    for process in ("Discord", "Update"):
+        subprocess.run(["taskkill", "/F", "/IM", process + ".exe"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    time.sleep(3)
+
+
+def remove_tree(target: Path):
+    """Apaga de verdade, ou falha dizendo o porque.
+
+    O Discord patcheado carrega de <mod>/dist/desktop, entao com ele aberto os
+    arquivos ficam travados e o rmtree apaga so uma parte. Engolir isso deixava
+    para tras um .git oco, que passava na checagem e quebrava o git fetch.
+    """
+    if not target.exists():
+        return
+    shutil.rmtree(target, ignore_errors=True)
+    if target.exists():
+        log("arquivos em uso; fechando o Discord para concluir a remocao")
+        close_discord()
+        shutil.rmtree(target, ignore_errors=True)
+    if target.exists():
+        fail(f"Nao consegui apagar {target}. Feche o Discord e tente de novo.")
+    log(f"removido: {target}")
+
+
+def is_git_repo(path: Path) -> bool:
+    """Confirma com o proprio git, em vez de confiar na existencia de .git."""
+    if not (path / ".git").exists():
+        return False
+    result = subprocess.run(["git", "rev-parse", "--is-inside-work-tree"],
+                            cwd=str(path), capture_output=True, text=True)
+    return result.returncode == 0 and result.stdout.strip() == "true"
+
+
 def prepare_mod(install_root: Path, plugin_source: Path):
     step(f"[5/8] Baixando ou atualizando o {MOD_NAME}")
     mod_dir = install_root / MOD_NAME
-    if not (mod_dir / ".git").is_dir():
-        shutil.rmtree(mod_dir, ignore_errors=True)
+    if not is_git_repo(mod_dir):
+        if mod_dir.exists():
+            log(f"a copia anterior do {MOD_NAME} nao e um repositorio git valido; refazendo o clone")
+            remove_tree(mod_dir)
         run(["git", "clone", "--depth", "1", MOD_REPO, str(mod_dir)], cwd=install_root)
     else:
         run(["git", "fetch", "--depth", "1", "origin", MOD_BRANCH], cwd=mod_dir)
@@ -286,9 +322,7 @@ def build(mod_dir: Path, plugin_source: Path):
 
 def inject(mod_dir: Path):
     step("[7/8] Fechando Discord e instalando no Discord Stable")
-    for process in ("Discord", "Update"):
-        subprocess.run(["taskkill", "/F", "/IM", process + ".exe"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    time.sleep(3)
+    close_discord()
     installer = mod_dir / "scripts" / "runInstaller.mjs"
     if not installer.is_file():
         fail(f"Injetor oficial do {MOD_NAME} não foi encontrado.")
@@ -297,6 +331,56 @@ def inject(mod_dir: Path):
     if result.returncode != 0 or not re.search(r"success|installed|patched|already", combined, re.I):
         fail("A injeção não foi confirmada pelo instalador oficial.")
     log("OK: injeção concluída")
+
+
+def verify(mod_dir: Path) -> bool:
+    """Confere o que da para conferir sem abrir o Discord.
+
+    "Instalacao concluida" nao provava nada: o injetor podia reportar sucesso e
+    o Discord continuar carregando outro mod. Aqui mostramos para onde cada
+    instalacao do Discord esta apontando e se o plugin esta mesmo no bundle.
+    """
+    ok = True
+    bundle = None
+    for candidate in (mod_dir / "dist" / "desktop" / "renderer.js", mod_dir / "dist" / "renderer.js"):
+        if candidate.is_file():
+            bundle = candidate
+            break
+    if bundle is None:
+        log("FALHA: nenhum renderer.js foi encontrado no dist.")
+        return False
+    if "Mothlight" in bundle.read_text(encoding="utf-8", errors="ignore"):
+        log(f"OK: plugin presente em {bundle}")
+    else:
+        log(f"FALHA: o plugin nao esta em {bundle}")
+        ok = False
+
+    # O stub guarda o caminho como literal JS, com as barras escapadas
+    # ("C:\\Users\\..."). Comparar sem normalizar acusava instalacao boa.
+    def normaliza(texto: str) -> str:
+        return re.sub(r"[\\/]+", "/", texto).lower()
+
+    esperado = normaliza(str(mod_dir / "dist" / "desktop"))
+    discord = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "Discord"
+    encontrados = 0
+    for app in sorted(discord.glob("app-*")):
+        stub = app / "resources" / "app.asar"
+        if not stub.is_file():
+            continue
+        encontrados += 1
+        alvo = stub.read_bytes()[:4096].decode("utf-8", errors="ignore")
+        if esperado in normaliza(alvo):
+            log(f"OK: {app.name} aponta para o Equicord do Mothlight")
+        elif "require(" in alvo:
+            log(f"ATENCAO: {app.name} esta patcheado, mas para outro lugar. Outro mod pode estar instalado por cima.")
+            ok = False
+        else:
+            log(f"FALHA: {app.name} nao esta patcheado.")
+            ok = False
+    if not encontrados:
+        log(f"FALHA: nenhuma instalacao do Discord encontrada em {discord}.")
+        ok = False
+    return ok
 
 
 # Nomes que o plugin ja usou em settings.json e como raiz de dados.
@@ -500,8 +584,10 @@ def main(argv: list[str] | None = None) -> int:
             previous = root / MOD_NAME
             if previous.exists():
                 step(f"Apagando o clone anterior do {MOD_NAME}")
-                shutil.rmtree(previous, ignore_errors=True)
-                log(f"removido: {previous}")
+                # Fechar antes de apagar: o Discord patcheado mantem arquivos do
+                # dist abertos e uma remocao parcial corrompe o clone.
+                close_discord()
+                remove_tree(previous)
             clean_plugin_settings()
         install_git(tools)
         install_node(tools)
@@ -510,7 +596,10 @@ def main(argv: list[str] | None = None) -> int:
         mod_dir = prepare_mod(root, plugin_source)
         build(mod_dir, plugin_source)
         inject(mod_dir)
-        step("[8/8] Finalização")
+        step("[8/8] Conferindo o resultado")
+        if not verify(mod_dir):
+            fail("A instalação terminou, mas a verificação final não passou. Veja as linhas acima.")
+        log("")
         log("INSTALAÇÃO CONCLUÍDA.")
         log("Abra o Discord e ative Mothlight em Configurações > Plugins.")
         return 0
