@@ -371,6 +371,58 @@ def repair_discord():
             log(f"aviso: nao consegui restaurar {stub}: {exc}")
 
 
+def describe_discord_state():
+    """Despeja o estado de patch do Discord, para o log dizer o porque da falha.
+
+    O injetor so imprime "Failed!". Sem estes dados nao da para distinguir
+    Discord aberto, permissao negada, patch antigo em modules/ ou outro mod
+    (BetterDiscord, OpenAsar) ocupando o lugar.
+    """
+    log("")
+    log("--- estado do Discord ---")
+    restantes = subprocess.run(["tasklist", "/FI", "IMAGENAME eq Discord.exe"],
+                               capture_output=True, text=True, errors="replace").stdout or ""
+    log("processos Discord.exe ainda abertos: " + ("sim" if "Discord.exe" in restantes else "nao"))
+
+    local_appdata = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
+    appdata = Path(os.environ.get("APPDATA", local_appdata))
+    for nome in ("BetterDiscord", "Vencord", "Equicord"):
+        for base in (appdata, local_appdata):
+            if (base / nome).is_dir():
+                log(f"outro mod presente no disco: {base / nome}")
+
+    discord = local_appdata / "Discord"
+    if not discord.is_dir():
+        log(f"pasta do Discord nao existe: {discord}")
+        return
+    for app in sorted(discord.glob("app-*")):
+        log(f"{app.name}:")
+        for nome in ("app.asar", "_app.asar"):
+            alvo = app / "resources" / nome
+            if not alvo.exists():
+                log(f"   {nome}: ausente")
+            elif alvo.is_dir():
+                log(f"   {nome}: PASTA (patch antigo por diretorio)")
+            else:
+                tamanho = alvo.stat().st_size
+                marca = " (stub de patch)" if tamanho < 4096 else ""
+                log(f"   {nome}: arquivo, {tamanho} bytes{marca}")
+                if tamanho < 4096:
+                    texto = alvo.read_bytes()[:2048].decode("utf-8", errors="ignore")
+                    alvos = re.findall(r'require\("([^"]+)"\)', texto)
+                    if alvos:
+                        log(f"      aponta para: {alvos[0]}")
+        modules = app / "modules"
+        for core in sorted(modules.glob("discord_desktop_core*")) if modules.is_dir() else []:
+            indice = core / "discord_desktop_core" / "index.js"
+            if indice.is_file():
+                conteudo = " ".join(indice.read_text(encoding="utf-8", errors="ignore").split())[:160]
+                estado = "PATCHEADO (metodo antigo)" if "core.asar" not in conteudo else "vanilla"
+                log(f"   {core.name}/index.js: {estado} -> {conteudo}")
+    log("--- fim do estado ---")
+    log("")
+
+
 def inject(mod_dir: Path):
     step("[7/8] Fechando Discord e instalando no Discord Stable")
     close_discord()
@@ -387,11 +439,14 @@ def inject(mod_dir: Path):
     # Discord sem patch nenhum. Agora o marcador de falha tem prioridade e o
     # sucesso precisa ser afirmado explicitamente.
     if re.search(r"❌|Failed!|Something went wrong", combined, re.I):
-        fail("O injetor oficial reportou falha. Feche o Discord completamente (inclusive na bandeja) "
-             "e tente de novo. Se persistir, desinstale outros mods do Discord antes.")
+        describe_discord_state()
+        fail("O injetor oficial reportou falha. O estado do Discord está logado acima; "
+             "mande esse trecho junto ao relatar o problema.")
     if result.returncode != 0:
+        describe_discord_state()
         fail(f"O injetor oficial saiu com código {result.returncode}.")
     if not re.search(r"Successfully patched", combined, re.I):
+        describe_discord_state()
         fail("O injetor não confirmou o patch.")
     log("OK: injeção concluída")
 
