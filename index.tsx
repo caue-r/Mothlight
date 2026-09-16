@@ -234,7 +234,7 @@ const settings = definePluginSettings({
     },
     protonUsername: {
         type: OptionType.STRING,
-        description: "Usuario ProtonVPN (seu login @proton.me ou o nome do app).",
+        description: "E-mail da sua conta Proton, o mesmo usado em account.proton.me.",
         default: ""
     },
     protonCountry: {
@@ -575,7 +575,7 @@ function VpnPanel() {
                 <Paragraph style={{ margin: 0, fontWeight: 700, fontSize: "15px" }}>Conta Proton VPN</Paragraph>
 
                 <TextInput value={username} onChange={setUsername} placeholder="E-mail ou usuario Proton (ex: voce@proton.me)" disabled={disabledAll} />
-                <TextInput value={password} onChange={setPassword} placeholder="Senha OpenVPN/IKEv2 (NAO e a senha da conta - pegue em account.protonvpn.com/downloads)" type="password" disabled={disabledAll} />
+                <TextInput value={password} onChange={setPassword} placeholder="Senha da sua conta Proton (a mesma de account.proton.me)" type="password" disabled={disabledAll} />
                 <TextInput value={twoFactorCode} onChange={setTwoFactorCode} placeholder="Codigo 2FA (deixa em branco se nao usar)" disabled={disabledAll} />
 
                 <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginTop: "4px" }}>
