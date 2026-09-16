@@ -350,25 +350,55 @@ def build(mod_dir: Path, plugin_source: Path):
     log("OK: build validado e binário copiado")
 
 
-def repair_discord():
-    """Conserta o Discord deixado sem app.asar por um unpatch interrompido.
+# Conteudo original do index.js do core do Discord, antes de qualquer mod.
+VANILLA_CORE_INDEX = "module.exports = require('./core.asar');\n"
 
-    O patch troca resources/app.asar por um stub e guarda o original como
-    _app.asar. Se o injetor falha entre apagar um e restaurar o outro, o
-    Discord fica sem app.asar e nao abre -- e o patch seguinte tambem falha,
-    porque nao ha o que despatchear.
+
+def reset_discord_mods():
+    """Devolve o Discord ao estado de fabrica antes de injetar.
+
+    O injetor oficial se recusa a patchear por cima de um patch que nao
+    reconhece: ele tenta despatchear primeiro e morre em "Failed!", sem dizer
+    o motivo. Restaurar por conta propria elimina essa dependencia e tambem
+    conserta um unpatch interrompido, que deixa o Discord sem app.asar nenhum.
+
+    Isso remove qualquer outro mod do Discord da maquina (BetterDiscord,
+    Vencord, outra instalacao do Equicord). E deliberado: o patch e um so, e
+    dois mods nao ocupam o mesmo lugar.
     """
     discord = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "Discord"
+    if not discord.is_dir():
+        return
     for app in sorted(discord.glob("app-*")):
         stub = app / "resources" / "app.asar"
         original = app / "resources" / "_app.asar"
-        if stub.exists() or not original.is_file():
-            continue
-        try:
-            original.rename(stub)
-            log(f"reparado: {app.name} estava sem app.asar; restaurado a partir de _app.asar")
-        except Exception as exc:
-            log(f"aviso: nao consegui restaurar {stub}: {exc}")
+        # Patch moderno: o asar original fica guardado como _app.asar.
+        if original.is_file():
+            try:
+                if stub.is_dir():
+                    force_rmtree(stub)
+                elif stub.exists():
+                    stub.unlink()
+                original.rename(stub)
+                log(f"{app.name}: app.asar restaurado a partir de _app.asar")
+            except Exception as exc:
+                log(f"aviso: nao consegui restaurar {stub}: {exc}")
+        elif not stub.exists():
+            log(f"AVISO: {app.name} esta sem app.asar e sem _app.asar para restaurar. "
+                "Esse Discord precisa ser reinstalado.")
+        # Patch antigo, direto no index.js do core.
+        modules = app / "modules"
+        for core in sorted(modules.glob("discord_desktop_core*")) if modules.is_dir() else []:
+            indice = core / "discord_desktop_core" / "index.js"
+            if not indice.is_file():
+                continue
+            try:
+                if "core.asar" in indice.read_text(encoding="utf-8", errors="ignore"):
+                    continue
+                indice.write_text(VANILLA_CORE_INDEX, encoding="utf-8")
+                log(f"{app.name}/{core.name}: index.js devolvido ao original (havia um mod pelo metodo antigo)")
+            except Exception as exc:
+                log(f"aviso: nao consegui restaurar {indice}: {exc}")
 
 
 def describe_discord_state():
@@ -426,7 +456,7 @@ def describe_discord_state():
 def inject(mod_dir: Path):
     step("[7/8] Fechando Discord e instalando no Discord Stable")
     close_discord()
-    repair_discord()
+    reset_discord_mods()
     installer = mod_dir / "scripts" / "runInstaller.mjs"
     if not installer.is_file():
         fail(f"Injetor oficial do {MOD_NAME} não foi encontrado.")
